@@ -1,0 +1,8 @@
+
+> wind-eysk-pwa@1.0.0 build
+> tsc -b && vite build
+
+src/pages/HomePage.tsx(16,27): error TS2552: Cannot find name 'activeStationData'. Did you mean 'activeStationId'?
+src/pages/HomePage.tsx(17,17): error TS2304: Cannot find name 'unit'.
+src/pages/TomorrowPage.tsx(22,27): error TS2552: Cannot find name 'activeStationData'. Did you mean 'activeStationId'?
+src/pages/TomorrowPage.tsx(23,17): error TS2304: Cannot find name 'unit'.

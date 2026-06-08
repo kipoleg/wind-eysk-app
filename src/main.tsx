@@ -6,7 +6,8 @@ import './styles/index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    {/* ИСПРАВЛЕНО: Добавили базовый путь для работы в подпапке хостинга */}
+    <BrowserRouter basename="/eisk">
       <App />
     </BrowserRouter>
   </React.StrictMode>

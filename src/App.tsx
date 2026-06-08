@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { AppHeader } from './components/AppHeader';
 import { BottomNav } from './components/BottomNav';
+import { PWARequestBanner } from './components/PWARequestBanner'; // ИМПОРТИРУЕМ БАННЕР
 import { useWeatherStore } from './store/weatherStore';
 import { AlertsPage } from './pages/AlertsPage';
 import { HomePage } from './pages/HomePage';
@@ -43,6 +44,9 @@ export function App() {
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
       <BottomNav />
+      
+      {/* ДОБАВЛЕНО: Рендерим плашку запроса установки */}
+      <PWARequestBanner />
     </div>
   );
 }

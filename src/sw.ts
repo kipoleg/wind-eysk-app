@@ -68,3 +68,10 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// ИСПРАВЛЕНО: Обработчик для автоматического сброса кэша и активации новой версии приложения
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});

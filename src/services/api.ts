@@ -4,9 +4,8 @@ import type { ForecastDay, Station, StationWeather, WeatherPoint } from '../type
 import { readCache, saveCache } from './idb';
 import { degreesFromDirection, directionFromDegrees } from '../utils/wind';
 
-const REMOTE_BASE = 'https://wind.sintez.info';
-const DEV_BASE = '/wind-api';
-const BASE_URL = import.meta.env.DEV ? DEV_BASE : REMOTE_BASE;
+// ИСПРАВЛЕНО: Автоматически убираем /wind-api на продакшене, чтобы запросы шли в корень
+const BASE_URL = import.meta.env.DEV ? '/wind-api' : '';
 
 const HISTORY_CACHE = 'history';
 const TODAY_CACHE = 'forecast-today';
@@ -53,13 +52,15 @@ async function fetchWithCache<T>(key: string, path: string): Promise<PayloadSour
   }
 }
 
-async function fetchHistoryWithCache(station: Station): Promise<PayloadSource> {
+async function fetchHistoryWithCache(
+  station: Station
+): Promise<PayloadSource> {
   const key = `${HISTORY_CACHE}:${station.id}`;
-  const primary = await fetchWithCache(key, `/history/history.php?id=${station.id}`);
-  if (hasStationRequiredError(primary.payload)) {
-    return fetchWithCache(key, `/history/history.php?station=${station.id}`);
-  }
-  return primary;
+
+  return fetchWithCache(
+    key,
+    `/history/history.php?station=${station.id}`
+  );
 }
 
 export async function fetchStationWeather(station: Station): Promise<StationWeather> {
@@ -123,13 +124,51 @@ function parseMaybeJson(payload: unknown): unknown {
   return payload;
 }
 
-function hasStationRequiredError(payload: unknown): boolean {
-  return Boolean(
-    payload &&
-      typeof payload === 'object' &&
-      'error' in payload &&
-      String((payload as { error?: unknown }).error).toLowerCase().includes('station')
-  );
+function normalizeForecastArrays(
+  payload: any,
+  station: Station,
+  day: ForecastDay
+): WeatherPoint[] {
+  if (!payload) return [];
+
+  const stationData =
+    station.id === '0240'
+      ? payload.yeisk
+      : station.id === '0332'
+      ? payload.yasensk
+      : null;
+
+  if (!stationData) return [];
+
+  const hours = stationData.all_hours ?? [];
+  const speed = stationData.all_speed ?? [];
+  const gusts = stationData.all_gusts ?? [];
+  const temps = stationData.all_temperature ?? [];
+  const dirs = stationData.all_dirs ?? [];
+
+  return hours.map((hour: string, index: number) => {
+    const time = `${payload.date}T${hour.padStart(5, '0')}:00`;
+
+    return {
+      id: `forecast-${station.id}-${index}`,
+      stationId: station.id,
+      time,
+      label: hour,
+      avgWind: Number(speed[index] ?? 0),
+      gust: Number(gusts[index] ?? 0),
+      minWind: null,
+      forecastWind: Number(speed[index] ?? 0),
+      temp: Number(temps[index] ?? 0),
+      directionDeg: null,
+      directionLabel: dirs[index] ?? '',
+      pressure: null,
+      humidity: null,
+      cloudiness: null,
+      precipitation: null,
+      waterTemp: null,
+      uvIndex: null
+    };
+  });
 }
 
 function normalizePayload(
@@ -182,7 +221,7 @@ function collectRecords(payload: unknown, context: RecordContext): Array<{ value
 function looksLikeWeatherRecord(record: Record<string, unknown>): boolean {
   const keys = Object.keys(record).map((key) => key.toLowerCase());
   return keys.some((key) => /(time|date|hour|время|дата|час)/.test(key)) &&
-    keys.some((key) => /(wind|вет|скор|gust|порыв|temp|темп)/.test(key));
+    keys.some((key) => /(wind|вет|скор|gust|порыв|temp|темп|avg|min|deg)/.test(key));
 }
 
 function recordMatchesStation(record: Record<string, unknown>, context: RecordContext, station: Station): boolean {
@@ -201,16 +240,14 @@ function normalizeRecord(
   source: 'history' | 'forecast',
   index: number
 ): WeatherPoint | null {
-  const time = normalizeTime(
-    pickText(record, ['time', 'datetime', 'date_time', 'date', 'hour', 'forecast_time', 'время', 'дата', 'час']),
-    day,
-    index
-  );
+  const rawTime = pickText(record, ['time', 'datetime', 'date_time', 'date', 'hour', 'forecast_time', 'время', 'дата', 'час'])
+    ?? (record['time'] != null ? String(record['time']) : null);
+  const time = normalizeTime(rawTime, day, index);
   if (!time) return null;
 
   const directionText = pickText(record, ['direction', 'wind_direction', 'dir', 'rumb', 'направление', 'напр']);
   const directionDeg = pickNumber(record, ['direction_deg', 'wind_dir_deg', 'deg', 'градусы']) ?? degreesFromDirection(directionText);
-  const avgWind = pickNumber(record, ['avgWind', 'wind', 'wind_speed', 'speed', 'mean', 'average', 'ветер', 'скорость']);
+  const avgWind = pickNumber(record, ['avgWind', 'avg', 'wind', 'wind_speed', 'speed', 'mean', 'average', 'ветер', 'скорость']);
 
   return {
     id: `${source}-${station.id}-${time}-${index}`,
@@ -271,8 +308,8 @@ function cellsToRecord(header: string[], cells: string[]): Record<string, string
 
 function pickCurrent(history: WeatherPoint[], today: WeatherPoint[]): WeatherPoint | null {
   const now = Date.now();
-  const candidates = [...history, ...today].filter((point) => new Date(point.time).getTime() <= now + 10 * 60 * 1000);
-  return candidates.at(-1) ?? history.at(-1) ?? today[0] ?? null;
+  const candidates = history.filter((point) => new Date(point.time).getTime() <= now + 10 * 60 * 1000);
+  return candidates.at(-1) ?? history.at(-1) ?? null;
 }
 
 function newestTimestamp(values: string[]): string | null {
@@ -286,6 +323,11 @@ function normalizeTime(value: string | null, day: ForecastDay, index: number): s
     if (day === 'tomorrow') date.setDate(date.getDate() + 1);
     date.setHours(index, 0, 0, 0);
     return date.toISOString();
+  }
+
+  const asNumber = Number(value);
+  if (!Number.isNaN(asNumber) && asNumber > 1_000_000_000) {
+    return new Date(asNumber * 1000).toISOString();
   }
 
   const cleaned = value.replace(/\s+/g, ' ').trim();

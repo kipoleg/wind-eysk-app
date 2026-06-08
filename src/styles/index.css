@@ -56,3 +56,17 @@ select {
     font-size: 12px;
   }
 }
+
+/* Исправление странной заливки активных иконок в подвале */
+nav svg, 
+[class*="BottomNav"] svg, 
+[class*="bottomNav"] svg {
+  /* Принудительно отменяем глухую внутреннюю заливку для Lucide-иконок */
+  fill: none !important;
+}
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
